@@ -1,0 +1,21 @@
+{
+  "name": "@kivora/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kivora Customer Mobile Application (Expo & React Native)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "type-check": "tsc --project tsconfig.json --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@kivora/types": "workspace:*",
+    "@kivora/ui": "workspace:*",
+    "@kivora/validation": "workspace:*"
+  },
+  "devDependencies": {
+    "@kivora/config": "workspace:*",
+    "typescript": "^5.7.2"
+  }
+}
