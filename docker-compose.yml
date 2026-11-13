@@ -1,0 +1,63 @@
+# Kivora Local Infrastructure Docker Compose
+# Services: PostgreSQL 16 & Redis 7
+#
+# Startup Command:
+#   docker compose up -d
+# Shutdown Command:
+#   docker compose down
+# Inspect Logs:
+#   docker compose logs -f [postgres | redis]
+# Reset Volume Data (Destructive):
+#   docker compose down -v
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kivora-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kivora_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kivora_dev_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-kivora_db}
+    volumes:
+      - kivora_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kivora_dev} -d ${POSTGRES_DB:-kivora_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - kivora-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: kivora-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-kivora_redis_secret}"]
+    volumes:
+      - kivora_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-kivora_redis_secret}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - kivora-network
+
+volumes:
+  kivora_postgres_data:
+    name: kivora_postgres_data
+  kivora_redis_data:
+    name: kivora_redis_data
+
+networks:
+  kivora-network:
+    name: kivora-network
+    driver: bridge
+
