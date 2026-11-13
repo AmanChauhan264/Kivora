@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Kivora Base Config",
+  "display": "Kivora Base TypeScript Configuration",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],

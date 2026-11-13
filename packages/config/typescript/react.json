@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "Kivora React Application Config",
+  "display": "Kivora React Application Configuration",
   "extends": "./base.json",
   "compilerOptions": {
     "target": "ES2022",
@@ -8,9 +8,6 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "outDir": "dist",
-    "rootDir": "src",
-    "declaration": true,
-    "declarationMap": true
+    "allowJs": true
   }
 }
