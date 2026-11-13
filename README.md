@@ -192,13 +192,35 @@ Run these scripts from the repository root:
 | `pnpm test`         | Runs automated test suites via Turborepo.                                   |
 | `pnpm clean`        | Cleans build artifacts and `dist` directories.                              |
 
+### Backend Database & Development Commands
+
+| Command                                         | Description                                                      |
+| :---------------------------------------------- | :--------------------------------------------------------------- |
+| `pnpm --filter @kivora/backend prisma:generate` | Generates the strongly-typed Prisma Client from `schema.prisma`. |
+| `pnpm --filter @kivora/backend prisma:validate` | Validates the Prisma schema syntax and relations.                |
+| `pnpm --filter @kivora/backend db:migrate`      | Applies pending database migrations via Prisma Migrate.          |
+| `pnpm --filter @kivora/backend db:seed`         | Seeds default categories and platform foundations idempotently.  |
+| `pnpm --filter @kivora/backend test`            | Executes backend Vitest test suites (health, env, errors).       |
+| `pnpm --filter @kivora/backend dev`             | Starts the backend HTTP server in watch mode via `tsx`.          |
+
+### Backend Database & Development Commands
+
+| Command                                     | Description                                                    |
+| :------------------------------------------ | :------------------------------------------------------------- |
+| `pnpm --filter @kivora/backend prisma:generate` | Generates the strongly-typed Prisma Client from `schema.prisma`. |
+| `pnpm --filter @kivora/backend prisma:validate` | Validates the Prisma schema syntax and relations.              |
+| `pnpm --filter @kivora/backend db:migrate`  | Applies pending database migrations via Prisma Migrate.        |
+| `pnpm --filter @kivora/backend db:seed`     | Seeds default categories and platform foundations idempotently. |
+| `pnpm --filter @kivora/backend test`        | Executes backend Vitest test suites (health, env, errors).     |
+| `pnpm --filter @kivora/backend dev`         | Starts the backend HTTP server in watch mode via `tsx`.        |
+
 ---
 
 ## 10. Development Roadmap & Milestones
 
 - [x] **Phase 0: Architecture & Foundation Planning** — Requirements analysis, system architecture specification, risk analysis, and roadmap establishment.
 - [x] **Phase 1: Monorepo Foundation & Tooling** — Scaffolding `pnpm` workspaces, Turborepo pipeline, shared packages (`@kivora/types`, `@kivora/validation`, `@kivora/config`, `@kivora/ui`), and Docker Compose setup.
-- [ ] **Phase 2: Database Architecture & Backend Core** — PostgreSQL schema design in Prisma, migrations, seed data, Express modular structure, and Redis client.
+- [x] **Phase 2: Database Architecture & Backend Core** — PostgreSQL schema design in Prisma, migrations, seed data, Express modular structure, and Redis client.
 - [ ] **Phase 3: Authentication & Security Engine** — Multi-role JWT authentication, password hashing, token rotation, and store ownership middleware.
 - [ ] **Phase 4: Product Catalog & Inventory Reservation Engine** — Products, categories, variant matrix generator, Cloudinary integration, and two-tier stock reservation engine.
 - [ ] **Phase 5: Multi-Vendor Orders, Razorpay Payments & Ledger** — Order splitting engine, Razorpay checkout, webhook signature verification, partial refunds, and double-entry seller ledger.
