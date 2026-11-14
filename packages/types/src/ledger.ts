@@ -1,3 +1,41 @@
+export type AccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
+
+export type EntryDirection = 'DEBIT' | 'CREDIT';
+
+export interface FinancialAccount {
+  id: string;
+  accountNumber: string;
+  name: string;
+  type: AccountType;
+  storeId?: string | null;
+  currency: string;
+  isActive: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface JournalTransaction {
+  id: string;
+  referenceKey: string;
+  description: string;
+  currency: string;
+  source: string;
+  postedAt: Date | string;
+  isReversed: boolean;
+  reversalOfId?: string | null;
+  entries?: JournalEntry[];
+}
+
+export interface JournalEntry {
+  id: string;
+  transactionId: string;
+  accountId: string;
+  direction: EntryDirection;
+  amount: number;
+  currency: string;
+  createdAt: Date | string;
+}
+
 export type LedgerEntryType = 'CREDIT' | 'DEBIT' | 'PAYOUT';
 
 export type LedgerCategory =
@@ -14,11 +52,13 @@ export interface SellerLedgerEntry {
   storeId: string;
   sellerOrderId?: string | null;
   payoutId?: string | null;
+  journalTransactionId?: string | null;
   type: LedgerEntryType;
   category: LedgerCategory;
   amount: number;
   balanceAfter: number;
   description: string;
+  referenceId?: string | null;
   createdAt: Date | string;
 }
 
