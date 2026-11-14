@@ -33,6 +33,7 @@ Kivora connects buyers, independent sellers, and platform administrators through
 - **Cache & Concurrency:** Redis 7 (distributed locking, stock reservation TTL, rate limiting, pub/sub)
 - **Real-Time Communication:** Socket.IO with `@socket.io/redis-adapter`
 - **Payment Processing:** Razorpay (Order creation, webhook signature verification, automated refunds, escrow settlement)
+- **Payment Processing:** Razorpay (Order creation, webhook signature verification, automated refunds, centralized settlement clearing)
 - **Media Management:** Cloudinary (Signed direct uploads, dynamic CDN image optimization)
 - **Validation & Security:** Zod, Argon2/Bcrypt, JWT (Access & Refresh token family rotation)
 
@@ -79,6 +80,7 @@ Kivora uses a distinct brand palette designed to evoke warmth, craftsmanship, an
 - **Authoritative Webhook:** Order fulfillment triggers strictly from verified Razorpay `payment.captured` webhooks (HMAC-SHA256 signature verification).
 - **Idempotency Safeguard:** Event IDs are recorded in `ProcessedWebhook` table to acknowledge duplicates without double-processing.
 - **Escrow Settlement:** Customer payments are held centrally in the platform escrow account. No automated marketplace split payments are used. Seller disbursements occur in controlled batch cycles after the 7-day return window.
+- **Settlement Clearing & Holdback:** Customer payments are collected centrally into the platform settlement account. No automated marketplace split payments are used. Seller disbursements occur via double-entry ledger batch cycles after the 7-day return cooling-off window.
 
 ### 4.3 Multi-Vendor Order Splitting & Rollup
 
@@ -205,14 +207,14 @@ Run these scripts from the repository root:
 
 ### Backend Database & Development Commands
 
-| Command                                     | Description                                                    |
-| :------------------------------------------ | :------------------------------------------------------------- |
+| Command                                         | Description                                                      |
+| :---------------------------------------------- | :--------------------------------------------------------------- |
 | `pnpm --filter @kivora/backend prisma:generate` | Generates the strongly-typed Prisma Client from `schema.prisma`. |
-| `pnpm --filter @kivora/backend prisma:validate` | Validates the Prisma schema syntax and relations.              |
-| `pnpm --filter @kivora/backend db:migrate`  | Applies pending database migrations via Prisma Migrate.        |
-| `pnpm --filter @kivora/backend db:seed`     | Seeds default categories and platform foundations idempotently. |
-| `pnpm --filter @kivora/backend test`        | Executes backend Vitest test suites (health, env, errors).     |
-| `pnpm --filter @kivora/backend dev`         | Starts the backend HTTP server in watch mode via `tsx`.        |
+| `pnpm --filter @kivora/backend prisma:validate` | Validates the Prisma schema syntax and relations.                |
+| `pnpm --filter @kivora/backend db:migrate`      | Applies pending database migrations via Prisma Migrate.          |
+| `pnpm --filter @kivora/backend db:seed`         | Seeds default categories and platform foundations idempotently.  |
+| `pnpm --filter @kivora/backend test`            | Executes backend Vitest test suites (health, env, errors).       |
+| `pnpm --filter @kivora/backend dev`             | Starts the backend HTTP server in watch mode via `tsx`.          |
 
 ---
 
