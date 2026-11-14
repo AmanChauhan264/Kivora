@@ -1,6 +1,21 @@
 export type PaymentStatus =
   'CREATED' | 'PENDING' | 'CAPTURED' | 'FAILED' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
 
+export type RefundStatus = 'PENDING' | 'PROCESSED' | 'FAILED';
+
+export interface PaymentAttempt {
+  id: string;
+  paymentId: string;
+  gatewayAttemptId?: string | null;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  rawResponse?: Record<string, unknown> | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  createdAt: Date | string;
+}
+
 export interface Payment {
   id: string;
   orderId: string;
@@ -12,6 +27,7 @@ export interface Payment {
   status: PaymentStatus;
   errorMessage?: string | null;
   capturedAt?: Date | string | null;
+  attempts?: PaymentAttempt[];
   refunds: PaymentRefund[];
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -24,6 +40,7 @@ export interface PaymentRefund {
   razorpayRefundId: string;
   amount: number;
   reason: string;
+  status: RefundStatus;
   createdAt: Date | string;
 }
 
