@@ -10,6 +10,9 @@ describe('Environment Configuration Validation', () => {
     expect(env.REDIS_URL).toBeDefined();
     expect(env.JWT_ACCESS_SECRET.length).toBeGreaterThanOrEqual(16);
     expect(env.JWT_REFRESH_SECRET.length).toBeGreaterThanOrEqual(16);
+    expect(env.JWT_ACCESS_SECRET.length).toBeGreaterThanOrEqual(32);
+    expect(env.JWT_REFRESH_SECRET.length).toBeGreaterThanOrEqual(32);
+    expect(env.JWT_ACCESS_SECRET).not.toBe(env.JWT_REFRESH_SECRET);
   });
 
   it('should parse CORS origins properly', () => {
