@@ -19,13 +19,19 @@ export interface OrderItem {
   id: string;
   sellerOrderId: string;
   variantId: string;
+  variantId?: string | null;
   productName: string;
   variantSku: string;
   attributes: Record<string, string>;
   quantity: number;
   unitPrice: number;
+  discount: number;
+  taxRate: number; // Purchase-time applied tax rate % (e.g. 18.00)
+  tax: number; // Tax amount
   totalPrice: number;
   imageUrl?: string | null;
+  storeId: string;
+  storeName: string;
 }
 
 export interface SellerOrder {
@@ -33,10 +39,12 @@ export interface SellerOrder {
   orderId: string;
   storeId: string;
   status: SellerOrderStatus;
+  currency: string;
   subtotal: number;
   shippingFee: number;
   platformFee: number; // Platform commission
   commissionGst: number; // 18% GST on platform commission
+  commissionGst: number; // GST on platform commission
   sellerEarnings: number; // subtotal - (platformFee + commissionGst)
   trackingNumber?: string | null;
   courierName?: string | null;
@@ -59,6 +67,10 @@ export interface Order {
   discountAmount: number;
   totalAmount: number;
   shippingAddress: Address;
+  currency: string;
+  shippingAddressId: string;
+  shippingAddressSnapshot: Record<string, unknown>; // Purchase-time immutable delivery address
+  shippingAddress?: Address;
   paymentId?: string | null;
   sellerOrders: SellerOrder[];
   createdAt: Date | string;
