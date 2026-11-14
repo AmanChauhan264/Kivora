@@ -19,6 +19,7 @@ export interface StoreBalance {
   storeId: string;
   availableBalance: number; // Funds cleared and eligible for payout
   pendingBalance: number; // Funds locked in 7-day customer return window
+  pendingSettlementBalance: number; // Settlement holdback during customer return window
   totalPaidOut: number; // Historical disbursements
   updatedAt: Date | string;
 }
