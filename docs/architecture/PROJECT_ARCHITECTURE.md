@@ -50,6 +50,7 @@ The platform unifies three distinct user personas into a cohesive ecosystem powe
 1. **Multi-Vendor Partitioning:** Isolation of seller catalog, orders, metrics, and payouts while providing a seamless unified cart experience to the customer.
 2. **Order Splitting Engine:** Automatic decomposition of multi-vendor shopping carts into independent seller sub-orders with granular tracking and fulfillment.
 3. **Double-Entry Financial Accounting & Ledger:** Uncompromising payment reconciliation, escrow collection, platform commission deduction, and non-automatic batch seller disbursements.
+3. **Double-Entry Financial Accounting & Ledger:** Uncompromising payment reconciliation, centralized settlement clearing, platform commission deduction, and non-automatic batch seller disbursements.
 4. **Resilient Two-Tier Inventory Concurrency:** Prevention of overselling via atomic Redis reservations (with TTL and recovery workers) backed by PostgreSQL transactional conditional decrements as the single source of truth.
 5. **Contract-Driven Backend-First Engineering:** Establishing database schema, OpenAPI contracts, and shared Zod validation schemas prior to client interface construction.
 
@@ -418,15 +419,23 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
    - If an unrecoverable bug occurs, alerts are dispatched to platform administrators via Slack/PagerDuty.
 
 ### 7.4 Decoupled Escrow Collection vs. Seller Payouts
+### 7.4 Decoupled Centralized Payment Collection vs. Seller Payouts (Settlement Holdback)
 
 - **No Automatic Marketplace Split Payments:** Automatic split payments (e.g. Razorpay Route / automated instant transfers) are strictly avoided because:
   1. Indian e-commerce compliance mandates customer return windows (7–14 days) before vendor earnings finalize.
   2. Sub-order cancellations and disputes require non-destructive deduction from seller reserves.
   3. Sellers require KYC document validation and bank account verification by platform administrators before any funds can leave the escrow account.
 - **Escrow Settlement Architecture:**
+  3. Sellers require KYC document validation and bank account verification by platform administrators before any funds can be disbursed from settlement accounts.
+- **Settlement Holdback & Clearing Architecture:**
   - 100% of customer funds are collected into Kivora's centralized primary merchant account.
   - Seller earnings are accounted for in an internal **double-entry ledger**.
   - Payouts are executed via controlled batch transfers (RazorpayX Payouts / NEFT / IMPS) once the return window closes.
+  - Seller earnings are accounted for in an internal **double-entry ledger** (`JournalTransaction` & `JournalEntry`).
+  - Payouts are executed via controlled batch transfers (RazorpayX Payouts / NEFT / IMPS) once the return window closes and funds move to `availableBalance`.
+
+> [!NOTE]
+> **Regulatory & Settlement Note:** Funds held during the return cooling-off window represent **Settlement Holdback / Pending Clearance** within the marketplace payment aggregator framework (e.g., Razorpay Route / nodal account terms per RBI guidelines under the Payment and Settlement Systems Act). They do not constitute an independent statutory banking escrow. All settlement timelines and fund routing mechanisms must be formally validated with the payment service provider and applicable legal/tax counsel.
 
 ---
 
