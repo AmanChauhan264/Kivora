@@ -18,7 +18,6 @@ export type SellerOrderStatus =
 export interface OrderItem {
   id: string;
   sellerOrderId: string;
-  variantId: string;
   variantId?: string | null;
   productName: string;
   variantSku: string;
@@ -43,7 +42,6 @@ export interface SellerOrder {
   subtotal: number;
   shippingFee: number;
   platformFee: number; // Platform commission
-  commissionGst: number; // 18% GST on platform commission
   commissionGst: number; // GST on platform commission
   sellerEarnings: number; // subtotal - (platformFee + commissionGst)
   trackingNumber?: string | null;
@@ -66,7 +64,6 @@ export interface Order {
   shippingFee: number;
   discountAmount: number;
   totalAmount: number;
-  shippingAddress: Address;
   currency: string;
   shippingAddressId: string;
   shippingAddressSnapshot: Record<string, unknown>; // Purchase-time immutable delivery address
