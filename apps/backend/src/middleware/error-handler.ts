@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { ApiResponseBuilder } from '../utils/api-response';
 import { HttpStatus } from '../constants/http-status';
 import { ErrorCode } from '../constants/error-codes';
+import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
 export function errorHandlerMiddleware(
@@ -15,7 +16,19 @@ export function errorHandlerMiddleware(
 ): void {
   const requestId = req.id || 'unknown';
 
-  // 1. Zod Validation Errors
+  // 1. Known Operational Application Errors
+  if (err instanceof AppError) {
+    logger.warn('Operational application error', {
+      requestId,
+      statusCode: err.statusCode,
+      errorCode: err.errorCode,
+      message: err.message,
+    });
+    ApiResponseBuilder.error(res, err.statusCode, err.message, err.errorCode, err.details);
+    return;
+  }
+
+  // 2. Zod Validation Errors
   if (err instanceof ZodError) {
     const details = err.errors.map((e) => ({
       field: e.path.join('.'),
