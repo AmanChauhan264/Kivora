@@ -181,3 +181,62 @@ ALTER TABLE "SellerLedgerEntry" ADD CONSTRAINT "SellerLedgerEntry_journalTransac
 
 -- AddForeignKey
 ALTER TABLE "Review" ADD CONSTRAINT "Review_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- ==============================================================================
+-- POSTGRESQL TRIGGERS FOR DOUBLE-ENTRY ACCOUNTING INTEGRITY
+-- ==============================================================================
+
+-- 1. Immutability: Prevent modification or deletion of posted journal transactions & entries
+CREATE OR REPLACE FUNCTION prevent_posted_journal_mutation()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'Posted journal records are strictly immutable. Corrections must be recorded via reversing transactions.';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "trg_journal_entry_immutable"
+BEFORE UPDATE OR DELETE ON "JournalEntry"
+FOR EACH ROW
+EXECUTE FUNCTION prevent_posted_journal_mutation();
+
+CREATE TRIGGER "trg_journal_transaction_immutable"
+BEFORE UPDATE OR DELETE ON "JournalTransaction"
+FOR EACH ROW
+EXECUTE FUNCTION prevent_posted_journal_mutation();
+
+-- 2. Zero-Sum Balance Enforcement: Deferred constraint trigger verifying sum(Debits) == sum(Credits) per currency
+CREATE OR REPLACE FUNCTION check_journal_transaction_balanced()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_unbalanced_count INT;
+BEGIN
+    -- Check if total debits equal total credits for each currency in this transaction
+    SELECT COUNT(*) INTO v_unbalanced_count
+    FROM (
+        SELECT currency,
+               SUM(CASE WHEN direction = 'DEBIT' THEN amount ELSE -amount END) AS balance
+        FROM "JournalEntry"
+        WHERE "transactionId" = NEW."transactionId"
+        GROUP BY currency
+        HAVING SUM(CASE WHEN direction = 'DEBIT' THEN amount ELSE -amount END) <> 0
+    ) sub;
+
+    IF v_unbalanced_count > 0 THEN
+        RAISE EXCEPTION 'Journal transaction % is unbalanced: total debits do not equal total credits per currency.', NEW."transactionId";
+    END IF;
+
+    -- Ensure transaction has at least 2 entries
+    IF (SELECT COUNT(*) FROM "JournalEntry" WHERE "transactionId" = NEW."transactionId") < 2 THEN
+        RAISE EXCEPTION 'Journal transaction % must contain at least two entries (one debit and one credit).', NEW."transactionId";
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE CONSTRAINT TRIGGER "trg_enforce_journal_balance"
+AFTER INSERT ON "JournalEntry"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION check_journal_transaction_balanced();
+
