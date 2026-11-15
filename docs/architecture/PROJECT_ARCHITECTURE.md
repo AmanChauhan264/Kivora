@@ -50,9 +50,9 @@ The platform unifies three distinct user personas into a cohesive ecosystem powe
 1. **Multi-Vendor Partitioning:** Isolation of seller catalog, orders, metrics, and payouts while providing a seamless unified cart experience to the customer.
 2. **Order Splitting Engine:** Automatic decomposition of multi-vendor shopping carts into independent seller sub-orders with granular tracking and fulfillment.
 3. **Double-Entry Financial Accounting & Ledger:** Uncompromising payment reconciliation, escrow collection, platform commission deduction, and non-automatic batch seller disbursements.
-3. **Double-Entry Financial Accounting & Ledger:** Uncompromising payment reconciliation, centralized settlement clearing, platform commission deduction, and non-automatic batch seller disbursements.
-4. **Resilient Two-Tier Inventory Concurrency:** Prevention of overselling via atomic Redis reservations (with TTL and recovery workers) backed by PostgreSQL transactional conditional decrements as the single source of truth.
-5. **Contract-Driven Backend-First Engineering:** Establishing database schema, OpenAPI contracts, and shared Zod validation schemas prior to client interface construction.
+4. **Double-Entry Financial Accounting & Ledger:** Uncompromising payment reconciliation, centralized settlement clearing, platform commission deduction, and non-automatic batch seller disbursements.
+5. **Resilient Two-Tier Inventory Concurrency:** Prevention of overselling via atomic Redis reservations (with TTL and recovery workers) backed by PostgreSQL transactional conditional decrements as the single source of truth.
+6. **Contract-Driven Backend-First Engineering:** Establishing database schema, OpenAPI contracts, and shared Zod validation schemas prior to client interface construction.
 
 ---
 
@@ -419,14 +419,14 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
    - If an unrecoverable bug occurs, alerts are dispatched to platform administrators via Slack/PagerDuty.
 
 ### 7.4 Decoupled Escrow Collection vs. Seller Payouts
+
 ### 7.4 Decoupled Centralized Payment Collection vs. Seller Payouts (Settlement Holdback)
 
 - **No Automatic Marketplace Split Payments:** Automatic split payments (e.g. Razorpay Route / automated instant transfers) are strictly avoided because:
   1. Indian e-commerce compliance mandates customer return windows (7–14 days) before vendor earnings finalize.
   2. Sub-order cancellations and disputes require non-destructive deduction from seller reserves.
   3. Sellers require KYC document validation and bank account verification by platform administrators before any funds can leave the escrow account.
-- **Escrow Settlement Architecture:**
-  3. Sellers require KYC document validation and bank account verification by platform administrators before any funds can be disbursed from settlement accounts.
+- **Escrow Settlement Architecture:** 3. Sellers require KYC document validation and bank account verification by platform administrators before any funds can be disbursed from settlement accounts.
 - **Settlement Holdback & Clearing Architecture:**
   - 100% of customer funds are collected into Kivora's centralized primary merchant account.
   - Seller earnings are accounted for in an internal **double-entry ledger**.
@@ -583,44 +583,146 @@ _Example:_
 
 ---
 
-## 10. AUTHENTICATION, AUTHORIZATION & RBAC
+## 10. AUTHENTICATION, AUTHORIZATION & SECURITY ENGINE
 
-Kivora enforces a unified authentication architecture with strict role segmentation:
+Kivora enforces a unified, enterprise-grade authentication and authorization architecture with strict role segmentation, Argon2id password hashing, and token family rotation.
 
 ```
 Roles:
-├── CUSTOMER (Can browse, purchase, review, manage personal profile)
-├── SELLER   (Can manage own store, products, inventory, sub-orders, view earnings)
-└── ADMIN    (Platform-wide governance, seller approval, finance, user management)
+├── CUSTOMER (Browse catalog, manage personal profile, cart, checkout, orders, reviews)
+├── SELLER   (Manage own store, catalog, inventory, fulfill sub-orders, view ledger earnings)
+└── ADMIN    (Platform governance, KYC verification, commission oversight, user management)
 ```
 
 ### 10.1 Token Lifecycle & Storage Matrix
 
-- **Access Token:** Short-lived (15 minutes), stateless JWT containing `{ userId, email, role, storeId? }`.
-- **Refresh Token:** Long-lived (7 days), stored in PostgreSQL with device fingerprinting and family rotation.
-  - **Web Dashboards (Seller & Admin):** Stored in `HttpOnly`, `SameSite=Strict`, `Secure` cookies. Immune to XSS attacks.
-  - **Mobile App (Customer):** Stored in hardware-backed `Expo SecureStore` (iOS Keychain / Android Keystore).
+- **Access Token:** Short-lived (15 minutes), signed with `JWT_ACCESS_SECRET`, containing `{ sub, email, role, storeId? }`, audience `kivora-app`, issuer `kivora-backend`.
+- **Refresh Token:** Long-lived (7 days), signed with `JWT_REFRESH_SECRET`, stored as a SHA-256 hash in PostgreSQL with lineage tracking (`familyId`).
+  - **Web Dashboards (Seller & Admin):** Stored in `HttpOnly`, `SameSite=Strict/Lax`, `Secure` (production) cookies, shielded from XSS exfiltration.
+  - **Mobile App (Customer):** Stored in hardware-backed **Expo SecureStore** (iOS Keychain / Android Keystore). Never stored in raw `AsyncStorage`.
 
-### 10.2 Store Ownership Middleware
+---
 
-```typescript
-export const verifyStoreOwnership = async (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-) => {
-  const { storeId } = req.user;
-  const targetStoreId = req.params.storeId || req.body.storeId;
+### 10.2 Authentication Sequence Diagrams
 
-  if (req.user.role !== 'ADMIN' && storeId !== targetStoreId) {
-    return res.status(403).json({
-      success: false,
-      message: "Forbidden: You do not have permission to modify this store's resources",
-    });
-  }
-  next();
-};
+#### A. Registration Flow (Customer & Seller)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Mobile / Web Client
+    participant API as Auth Controller & Service
+    participant Hash as Argon2id Engine
+    participant DB as PostgreSQL (Prisma)
+
+    Client->>API: POST /api/v1/auth/register/{customer|seller}
+    Note over API: Rate Limiter & Zod Validation
+    API->>DB: Check duplicate email, phone (and PAN/GSTIN for seller)
+    alt Duplicate Found
+        API-->>Client: 409 Conflict (CONFLICT_ERROR)
+    else Unique
+        API->>Hash: Hash password (memory: 64MB, time: 3, parallelism: 4)
+        Hash-->>API: $argon2id$ hash
+        API->>DB: BEGIN TRANSACTION
+        alt Customer
+            API->>DB: INSERT User (role: CUSTOMER) + CustomerProfile
+        else Seller
+            API->>DB: INSERT User (role: SELLER) + SellerProfile (KYC: false) + Store (status: PENDING)
+        end
+        API->>API: Generate Access JWT (15m) & Refresh JWT (7d, new familyId)
+        API->>DB: INSERT RefreshToken (tokenHash: SHA-256, familyId)
+        API->>DB: COMMIT TRANSACTION
+        API-->>Client: 201 Created { user, tokens } + Set-Cookie (HttpOnly)
+    end
 ```
+
+#### B. Login Flow with Constant-Time Timing Attack Mitigation
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Client App
+    participant API as Auth Service
+    participant Hash as Argon2id Engine
+    participant DB as PostgreSQL
+
+    Client->>API: POST /api/v1/auth/login { email, password }
+    API->>DB: SELECT User WHERE email = :email
+    alt User Not Found
+        API->>Hash: Verify against dummy hash (constant-time execution)
+        API-->>Client: 401 Unauthorized (INVALID_CREDENTIALS)
+    else User Found
+        API->>Hash: Verify passwordHash with submitted password
+        alt Password Mismatch
+            API-->>Client: 401 Unauthorized (INVALID_CREDENTIALS)
+        else Password Valid
+            API->>DB: Check isActive
+            API->>API: Generate Access Token + Refresh Token (new familyId)
+            API->>DB: INSERT RefreshToken (tokenHash, familyId)
+            API-->>Client: 200 OK { user, tokens } + Set-Cookie (HttpOnly)
+        end
+    end
+```
+
+#### C. Refresh Token Rotation & Reuse Detection (Family Revocation)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Legitimate Client / Attacker
+    participant API as Auth Service
+    participant DB as PostgreSQL (Prisma)
+
+    Client->>API: POST /api/v1/auth/refresh { refreshToken }
+    API->>API: Verify JWT signature & expiration
+    API->>API: Compute tokenHash = SHA-256(refreshToken)
+    API->>DB: SELECT * FROM RefreshToken WHERE tokenHash = :tokenHash
+    alt Token Record Not Found
+        API-->>Client: 401 Unauthorized (TOKEN_INVALID)
+    else Token Record Exists BUT isRevoked = true (REUSE DETECTED!)
+        Note over API,DB: CRITICAL: A previously rotated token was presented!
+        API->>DB: UPDATE RefreshToken SET isRevoked = true WHERE familyId = :familyId
+        API-->>Client: 401 Unauthorized (TOKEN_REUSE_DETECTED)
+    else Token Record Valid & isRevoked = false
+        API->>DB: BEGIN TRANSACTION
+        API->>DB: UPDATE RefreshToken SET isRevoked = true WHERE id = :oldTokenId
+        API->>API: Generate New Access Token & New Refresh Token (same familyId)
+        API->>DB: INSERT RefreshToken (new tokenHash, same familyId)
+        API->>DB: COMMIT TRANSACTION
+        API-->>Client: 200 OK { user, newTokens } + Set-Cookie
+    end
+```
+
+#### D. Logout & Global Session Revocation
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Authenticated Client
+    participant API as Auth Controller & Service
+    participant DB as PostgreSQL
+
+    alt Current Device Logout: POST /api/v1/auth/logout
+        Client->>API: POST /api/v1/auth/logout { refreshToken }
+        API->>DB: UPDATE RefreshToken SET isRevoked = true WHERE tokenHash = :hash
+        API-->>Client: 200 OK { loggedOut: true } + Clear-Cookie
+    else Logout All Devices: POST /api/v1/auth/logout-all
+        Client->>API: POST /api/v1/auth/logout-all (Bearer Token)
+        Note over API: authenticateAccessToken middleware validates req.user
+        API->>DB: UPDATE RefreshToken SET isRevoked = true WHERE userId = :userId
+        API-->>Client: 200 OK { loggedOutAll: true } + Clear-Cookie
+    end
+```
+
+---
+
+### 10.3 Middleware Security Guards
+
+1. **`authenticateAccessToken`:** Extracts Bearer token from `Authorization` header (or fallback to `kivora_access_token` cookie), validates signature and expiration, attaches `req.user: AuthenticatedUser`.
+2. **`requireRole(...roles)`:** Restricts endpoint access strictly to designated roles (`CUSTOMER`, `SELLER`, `ADMIN`).
+3. **`requireApprovedSeller`:** Verifies that a seller has `kycVerified === true` and their store has `status === 'ACTIVE'`. Restricts unapproved sellers from product/store management.
+4. **`requireStoreOwnership(paramName)`:** Ensures seller only modifies resources belonging to their own verified `storeId`. Admins bypass this check for platform governance.
+5. **`createRateLimiter`:** Redis-backed rate limiter (sliding/fixed window) protecting authentication routes against brute-force attacks.
 
 ---
 
