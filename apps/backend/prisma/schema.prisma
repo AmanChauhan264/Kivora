@@ -38,9 +38,30 @@ model User {
   cart            Cart?
   reviews         Review[]
   notifications   Notification[]
+  refreshTokens   RefreshToken[]
 
   @@index([role])
   @@index([isActive])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique // SHA-256 hash of refresh token
+  familyId  String   // Token rotation lineage to detect token reuse
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userAgent String?
+  ipAddress String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([tokenHash])
+  @@index([expiresAt])
 }
 
 model CustomerProfile {
@@ -88,7 +109,6 @@ model Address {
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders Order[]
 
-  @@index([userId])
   @@index([userId, isDefault])
 }
 
@@ -116,12 +136,6 @@ model Store {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  sellerProfile SellerProfile       @relation(fields: [sellerProfileId], references: [id], onDelete: Restrict)
-  products      Product[]
-  sellerOrders  SellerOrder[]
-  balance       StoreBalance?
-  ledgerEntries SellerLedgerEntry[]
-  payouts       SellerPayout[]
   sellerProfile     SellerProfile       @relation(fields: [sellerProfileId], references: [id], onDelete: Restrict)
   products          Product[]
   sellerOrders      SellerOrder[]
@@ -181,8 +195,6 @@ model Product {
   variants ProductVariant[]
   reviews  Review[]
 
-  @@index([storeId])
-  @@index([categoryId])
   @@index([storeId, status])
   @@index([categoryId, status])
   @@index([status])
@@ -227,7 +239,6 @@ model ProductVariant {
 model InventoryItem {
   id                String   @id @default(uuid())
   variantId         String   @unique
-  quantity          Int      @default(0) // Physical on-hand stock
   quantity          Int      @default(0) // Physical on-hand stock in warehouse
   reservedQuantity  Int      @default(0) // Active reservations (locked during checkout intent)
   lowStockThreshold Int      @default(5)
@@ -340,33 +351,20 @@ enum SellerOrderStatus {
 }
 
 model Order {
-  id                String      @id @default(uuid())
-  orderNumber       String      @unique
-  userId            String
-  shippingAddressId String
-  status            OrderStatus @default(PENDING_PAYMENT)
-  subtotal          Decimal     @db.Decimal(12, 2)
-  shippingFee       Decimal     @default(0.00) @db.Decimal(12, 2)
-  discountAmount    Decimal     @default(0.00) @db.Decimal(12, 2)
-  totalAmount       Decimal     @db.Decimal(12, 2)
-  currency          String      @default("INR")
-  paymentId         String?     @unique
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  id                     String      @id @default(uuid())
-  orderNumber            String      @unique
-  userId                 String
-  shippingAddressId      String
+  id                      String      @id @default(uuid())
+  orderNumber             String      @unique
+  userId                  String
+  shippingAddressId       String
   shippingAddressSnapshot Json        // Purchase-time immutable delivery address snapshot
-  status                 OrderStatus @default(PENDING_PAYMENT)
-  subtotal               Decimal     @db.Decimal(12, 2)
-  shippingFee            Decimal     @default(0.00) @db.Decimal(12, 2) // Sum of all SellerOrder shipping fees
-  discountAmount         Decimal     @default(0.00) @db.Decimal(12, 2)
-  totalAmount            Decimal     @db.Decimal(12, 2)
-  currency               String      @default("INR")
-  paymentId              String?     @unique
-  createdAt              DateTime    @default(now())
-  updatedAt              DateTime    @updatedAt
+  status                  OrderStatus @default(PENDING_PAYMENT)
+  subtotal                Decimal     @db.Decimal(12, 2)
+  shippingFee             Decimal     @default(0.00) @db.Decimal(12, 2) // Sum of all SellerOrder shipping fees
+  discountAmount          Decimal     @default(0.00) @db.Decimal(12, 2)
+  totalAmount             Decimal     @db.Decimal(12, 2)
+  currency                String      @default("INR")
+  paymentId               String?     @unique
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
 
   user            User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   shippingAddress Address       @relation(fields: [shippingAddressId], references: [id], onDelete: Restrict)
@@ -386,10 +384,8 @@ model SellerOrder {
   status             SellerOrderStatus @default(PENDING_PAYMENT)
   currency           String            @default("INR")
   subtotal           Decimal           @db.Decimal(12, 2)
-  shippingFee        Decimal           @default(0.00) @db.Decimal(12, 2)
   shippingFee        Decimal           @default(0.00) @db.Decimal(12, 2) // Package shipping allocated to this store
   platformFee        Decimal           @db.Decimal(12, 2) // Gross platform commission
-  commissionGst      Decimal           @db.Decimal(12, 2) // 18% GST on platform fee
   commissionGst      Decimal           @db.Decimal(12, 2) // GST on platform fee
   sellerEarnings     Decimal           @db.Decimal(12, 2) // subtotal - (platformFee + commissionGst)
   trackingNumber     String?
@@ -422,8 +418,6 @@ model OrderItem {
   unitPrice         Decimal  @db.Decimal(12, 2)
   quantity          Int
   discount          Decimal  @default(0.00) @db.Decimal(12, 2)
-  tax               Decimal  @default(0.00) @db.Decimal(12, 2)
-  totalPrice        Decimal  @db.Decimal(12, 2)
   taxRate           Decimal  @default(0.00) @db.Decimal(5, 2)  // Purchase-time applied tax rate % (e.g. 18.00)
   tax               Decimal  @default(0.00) @db.Decimal(12, 2) // Total tax amount for this item
   totalPrice        Decimal  @db.Decimal(12, 2)                // (unitPrice * quantity) - discount + tax
@@ -441,7 +435,6 @@ model OrderItem {
 }
 
 // ==============================================================================
-// 6. PAYMENTS & ESCROW RECONCILIATION
 // 6. PAYMENTS & CLEARING RECONCILIATION
 // ==============================================================================
 
@@ -455,30 +448,19 @@ enum PaymentStatus {
 }
 
 model Payment {
-  id                String        @id @default(uuid())
-  orderId           String        @unique
-  razorpayOrderId   String        @unique
-  razorpayPaymentId String?       @unique
   id                String           @id @default(uuid())
   orderId           String           @unique
   razorpayOrderId   String           @unique
   razorpayPaymentId String?          @unique
   razorpaySignature String?
-  amount            Decimal       @db.Decimal(12, 2)
-  currency          String        @default("INR")
-  status            PaymentStatus @default(CREATED)
   amount            Decimal          @db.Decimal(12, 2)
   currency          String           @default("INR")
   status            PaymentStatus    @default(CREATED)
   errorMessage      String?
   capturedAt        DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
-  order   Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  refunds PaymentRefund[]
   order    Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)
   attempts PaymentAttempt[]
   refunds  PaymentRefund[]
@@ -511,21 +493,15 @@ enum RefundStatus {
 }
 
 model PaymentRefund {
-  id               String   @id @default(uuid())
   id               String       @id @default(uuid())
   paymentId        String
   sellerOrderId    String?
-  razorpayRefundId String   @unique
-  amount           Decimal  @db.Decimal(12, 2)
   razorpayRefundId String       @unique
   amount           Decimal      @db.Decimal(12, 2)
   reason           String
-  status           String   @default("PROCESSED")
-  createdAt        DateTime @default(now())
   status           RefundStatus @default(PROCESSED)
   createdAt        DateTime     @default(now())
 
-  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   payment     Payment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   sellerOrder SellerOrder? @relation(fields: [sellerOrderId], references: [id], onDelete: SetNull)
 
@@ -554,7 +530,6 @@ model ProcessedWebhook {
 }
 
 // ==============================================================================
-// 7. SELLER FINANCIAL LEDGER & PAYOUT DISBURSEMENT
 // 7. DOUBLE-ENTRY FINANCIAL ACCOUNTING & SELLER SUBLEDGER
 // ==============================================================================
 
@@ -625,12 +600,6 @@ model JournalEntry {
 }
 
 model StoreBalance {
-  id               String   @id @default(uuid())
-  storeId          String   @unique
-  availableBalance Decimal  @default(0.00) @db.Decimal(14, 2)
-  pendingBalance   Decimal  @default(0.00) @db.Decimal(14, 2) // Escrow during 7-day customer return window
-  totalPaidOut     Decimal  @default(0.00) @db.Decimal(14, 2)
-  updatedAt        DateTime @updatedAt
   id                       String   @id @default(uuid())
   storeId                  String   @unique
   availableBalance         Decimal  @default(0.00) @db.Decimal(14, 2)
@@ -657,17 +626,6 @@ enum LedgerCategory {
 
 // Seller-facing subledger projection derived from double-entry JournalTransactions
 model SellerLedgerEntry {
-  id            String          @id @default(uuid())
-  storeId       String
-  sellerOrderId String?
-  payoutId      String?
-  type          LedgerEntryType
-  category      LedgerCategory
-  amount        Decimal         @db.Decimal(12, 2)
-  balanceAfter  Decimal         @db.Decimal(14, 2)
-  description   String
-  referenceId   String?         @unique // Unique external transaction or transfer reference
-  createdAt     DateTime        @default(now())
   id                   String              @id @default(uuid())
   storeId              String
   sellerOrderId        String?
@@ -681,9 +639,6 @@ model SellerLedgerEntry {
   referenceId          String?             @unique // Unique external transaction or transfer reference
   createdAt            DateTime            @default(now())
 
-  store       Store        @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  sellerOrder SellerOrder? @relation(fields: [sellerOrderId], references: [id], onDelete: SetNull)
-  payout      SellerPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
   store              Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
   sellerOrder        SellerOrder?        @relation(fields: [sellerOrderId], references: [id], onDelete: SetNull)
   payout             SellerPayout?       @relation(fields: [payoutId], references: [id], onDelete: SetNull)
@@ -736,13 +691,10 @@ model Review {
   title       String?
   comment     String   @db.Text
   sellerReply String?  @db.Text
-  isVerified  Boolean  @default(true)
   isVerified  Boolean  @default(false) // Set to true only when linked to verified delivered order item
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItem OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
@@ -766,4 +718,3 @@ model Notification {
 
   @@index([userId, isRead])
 }
-
